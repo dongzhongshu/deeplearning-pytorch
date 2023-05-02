@@ -1,2 +1,3 @@
 # deeplearning-pytorch
-deeplearning pytorch version
+Deep Learning Specialization on Coursera (https://github.com/dongzhongshu/Deep-Learning-Specialization-Coursera )  for pytorch
+

@@ -299,7 +299,7 @@ def loss_batch(model, loss_func, xb, yb, opt=None):
 
 
 def fit(model, print_cost=True):
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
     traindataset = MyDataSet(X_train, Y_train)
     validdataset = MyDataSet(X_test, Y_test)
     trainLoader = DataLoader(dataset=traindataset,  batch_size=32)

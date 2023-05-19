@@ -31,6 +31,9 @@ def __parse_midi(data_fn):
         melody1.insert(j.offset, j)
     melody_voice = melody1
 
+    # melody_voice = melody_stream.getElementsByClass(stream.Voice)
+
+
     for i in melody_voice:
         if i.quarterLength == 0.0:
             i.quarterLength = 0.25

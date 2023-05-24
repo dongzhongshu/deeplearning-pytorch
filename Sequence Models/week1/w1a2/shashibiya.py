@@ -33,7 +33,7 @@ class Shashibiya(torch.nn.Module):
         # batch_size=16
         # h_0 = torch.randn(self.num_directions * self.num_layers, batch_size, self.hidden_size)
         # c_0 = torch.randn(self.num_directions * self.num_layers, batch_size, self.hidden_size)
-        output, _ = self.lstm(input)
+         output, _ = self.lstm(input)
         res = self.fc(output.data)
         return res
 

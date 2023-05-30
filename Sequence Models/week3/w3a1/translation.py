@@ -201,7 +201,7 @@ def fit():
         source = np.array(list(map(lambda x: to_categorical(x, num_classes=len(human_vocab)), source))).swapaxes(0, 1)
         source = np.swapaxes(source, 0, 1)
         source = np.expand_dims(source, axis=0)
-        prediction = model(source)
+        prediction = model(torch.tensor(source))
         prediction = np.argmax(prediction, axis=-1)
         output = [inv_machine_vocab[int(i)] for i in prediction]
         print("source:", example)

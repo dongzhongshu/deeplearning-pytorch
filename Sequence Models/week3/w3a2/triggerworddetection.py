@@ -273,7 +273,7 @@ class TimeDistributed(nn.Module):
 
         return y
 
-
+# TODO: 损失不下降，得查找一下原因。
 class Trigger(torch.nn.Module):
     def __init__(self):
         super(Trigger, self).__init__()

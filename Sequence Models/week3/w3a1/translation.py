@@ -73,7 +73,7 @@ class one_step_attention(torch.nn.Module):
         self.relu = torch.nn.ReLU()
         self.linear2 = torch.nn.LazyLinear(1)
         self.tanh = torch.nn.Tanh()
-        self.softmax = torch.nn.Softmax()
+        self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, X):
         a, s_prev = X
@@ -126,7 +126,7 @@ class modelf(torch.nn.Module):
         # c_0 = torch.randn(self.num_directions * self.num_layers, batch_size, self.hidden_size)
         self.lstmcell = torch.nn.LSTMCell(n_s, n_s)
         self.fc = torch.nn.LazyLinear(len(machine_vocab))
-        self.softmax = torch.nn.Softmax()
+        # self.softmax = torch.nn.Softmax(dim=-1)
         # outputs = []
         outputs = None
 
@@ -135,12 +135,12 @@ class modelf(torch.nn.Module):
         # h_0 = torch.randn(m, 2 , self.hidden_size)
         # c_0 = torch.randn(m, 2 , self.hidden_size)
         # c_0 = torch.randn(self.num_directions * self.num_layers, batch_size, self.hidden_size)
-        a, b = self.blstem(X.float())
+        a, b = self.blstem(X)
         # h_n, c_n = b
         outputs = []
         h_n = torch.zeros(m, 2, self.n_a)
-        s = torch.randn(m, self.n_s)
-        c = torch.randn(m, self.n_s)
+        s = torch.zeros(m, self.n_s)
+        c = torch.zeros(m, self.n_s)
         for t in range(Ty):
             # Step 2.A: Perform one step of the attention mechanism to get back the context vector at step t (≈ 1 line)
             # h_n = torch.transpose(h_n, 0, 1)
@@ -153,11 +153,12 @@ class modelf(torch.nn.Module):
             h_n = s
             # Step 2.C: Apply Dense layer to the hidden state output of the post-attention LSTM (≈ 1 line)
             out = self.fc(s)
-            out = self.softmax(out)
+            # out = self.softmax(out)
             # outputs = torch.cat(out, dim=0)
             # Step 2.D: Append "out" to the "outputs" list (≈ 1 line)
             outputs.append(out)
         b = torch.stack(outputs, dim=1)
+        # b = torch.cat(outputs, dim=0)
         return b
 
 
@@ -176,8 +177,8 @@ class DateData(Dataset):
 
 def fit():
     model = modelf(Tx, Ty, 32, 64, len(human_vocab), len(machine_vocab))
-    trainLoader = DataLoader(dataset=DateData(Xoh, Yoh), batch_size=16)
-    opt = torch.optim.Adam(model.parameters(), lr=0.001)
+    trainLoader = DataLoader(dataset=DateData(torch.tensor(Xoh, dtype=torch.float32), torch.tensor(Yoh, dtype=torch.float32)), batch_size=32)#数据必须转换为Tensor，否则损失率不会下降。
+    opt = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=0.01)
     loss_func = torch.nn.CrossEntropyLoss()
     for i in range(50):
         model.train()
@@ -186,9 +187,10 @@ def fit():
             opt.zero_grad()
             pred = model(x)
             loss = loss_func(pred, y.float())
+            trainloss.append(loss.item())
             loss.backward()
             opt.step()
-            trainloss.append(loss.item())
+
         print(f'for {i}/50: train loss:{np.mean(trainloss)}')
 
     EXAMPLES = ['3 May 1979', '5 April 09', '21th of August 2016', 'Tue 10 Jul 2007', 'Saturday May 9 2018',

@@ -273,22 +273,26 @@ class TimeDistributed(nn.Module):
 
         return y
 
-# TODO: 损失不下降，得查找一下原因。
+
 class Trigger(torch.nn.Module):
     def __init__(self):
         super(Trigger, self).__init__()
         self.conv1d = torch.nn.Conv1d(101, 196, 15, 4)
         self.batchnorm = torch.nn.LazyBatchNorm1d()
         self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(0.8)
+        # self.dropout1 = torch.nn.Dropout(0.8)
+        self.dropout = torch.nn.Dropout(0.1)
         self.gru = torch.nn.GRU(196, 128, batch_first=True)
         self.gru1 = torch.nn.GRU(128, 128, batch_first=True)
-        self.linear = torch.nn.LazyLinear(1)
+
+        self.linear = torch.nn.Sequential(torch.nn.LazyLinear(1),
+                                          torch.nn.Sigmoid())
         self.timedistributed = TimeDistributed(self.linear, batch_first=True)
+
     def forward(self, X):
-        X = X.permute(0, 2, 1)
+        X = X.transpose(2, 1)
         x = self.conv1d(X)
-        x = x.permute(0, 2, 1)
+        x = x.transpose(2, 1)
         x = self.batchnorm(x)
         x = self.relu(x)
         x = self.dropout(x)
@@ -303,26 +307,28 @@ class Trigger(torch.nn.Module):
         x = self.batchnorm(x)
         x = self.dropout(x)
 
+
         x = self.timedistributed(x)
 
         return x
 
 
 def fit():
-    trainset = DateData(X, Y)
+    trainset = DateData(torch.tensor(X, dtype=torch.float32), torch.tensor(Y, dtype=torch.float32))#X, Y必须转换为tensor，否则损失不会下降。
     trainLoader = DataLoader(dataset=trainset, batch_size=32)
     model = Trigger()
-    opt = torch.optim.Adam(model.parameters())
-    loss_func = torch.nn.BCEWithLogitsLoss()
+    opt = torch.optim.Adam(model.parameters())#学习率很重要，高也不行，低也不行
+    loss_func = torch.nn.BCELoss()
     for i in range(50):
         model.train()
         trainloss = []
         for datax, datay in trainLoader:
             opt.zero_grad()
             pred = model(datax.float())
-            loss = loss_func(pred, datay)
+            loss = loss_func(pred.float(), datay.float())
             trainloss.append(loss.item())
             loss.backward()
+            opt.step()
         print(f'for {i}/50: the trainloss:{np.mean(trainloss)}')
 
 fit()

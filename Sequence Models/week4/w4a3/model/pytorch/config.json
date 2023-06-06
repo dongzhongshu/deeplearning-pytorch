@@ -19,5 +19,5 @@
   "sinusoidal_pos_embds": false,
   "tie_weights_": true,
   "transformers_version": "4.5.1",
-  "vocab_size": 30522
+  "vocab_size": 28996
 }

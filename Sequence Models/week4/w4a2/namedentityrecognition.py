@@ -8,6 +8,8 @@ import re
 df_data = pd.read_json("ner.json", lines=True)
 df_data = df_data.drop(['extras'], axis=1)
 df_data['content'] = df_data['content'].str.replace("\n", " ")
+
+
 def mergeIntervals(intervals):
     sorted_by_lower_bound = sorted(intervals, key=lambda tup: tup[0])
     merged = []
@@ -59,7 +61,7 @@ def convert_dataturks_to_spacy(dataturks_JSON_FilePath):
     try:
         training_data = []
         lines = []
-        with open(dataturks_JSON_FilePath, 'r') as f:
+        with open(dataturks_JSON_FilePath, 'r', encoding="utf-8") as f:
             lines = f.readlines()
 
         for line in lines:
@@ -124,10 +126,11 @@ def trim_entity_spans(data: list) -> list:
     return cleaned_data
 
 
-
 data = trim_entity_spans(convert_dataturks_to_spacy("ner.json"))
 
 from tqdm.notebook import tqdm
+
+
 def clean_dataset(data):
     cleanedDF = pd.DataFrame(columns=["setences_cleaned"])
     sum1 = 0
@@ -140,11 +143,11 @@ def clean_dataset(data):
         strDictData = data[i][1]
         lastIndexOfSpace = strData.rfind(' ')
         for i in range(lenOfString):
-            if (strData[i]==" " and strData[i+1]!=" "):
-                for k,v in strDictData.items():
+            if (strData[i] == " " and strData[i + 1] != " "):
+                for k, v in strDictData.items():
                     for j in range(len(v)):
-                        entList = v[len(v)-j-1]
-                        if (start>=int(entList[0]) and i<=int(entList[1])):
+                        entList = v[len(v) - j - 1]
+                        if (start >= int(entList[0]) and i <= int(entList[1])):
                             emptyList[numberOfWords] = entList[2]
                             break
                         else:
@@ -153,13 +156,104 @@ def clean_dataset(data):
                 numberOfWords += 1
             if (i == lastIndexOfSpace):
                 for j in range(len(v)):
-                        entList = v[len(v)-j-1]
-                        if (lastIndexOfSpace>=int(entList[0]) and lenOfString<=int(entList[1])):
-                            emptyList[numberOfWords] = entList[2]
-                            numberOfWords += 1
-        cleanedDF = cleanedDF.append(pd.Series([emptyList],  index=cleanedDF.columns ), ignore_index=True )
+                    entList = v[len(v) - j - 1]
+                    if (lastIndexOfSpace >= int(entList[0]) and lenOfString <= int(entList[1])):
+                        emptyList[numberOfWords] = entList[2]
+                        numberOfWords += 1
+        cleanedDF = cleanedDF.append(pd.Series([emptyList], index=cleanedDF.columns), ignore_index=True)
         sum1 = sum1 + numberOfWords
     return cleanedDF
 
 
 cleanedDF = clean_dataset(data)
+
+unique_tags = set(cleanedDF[
+                      'setences_cleaned'].explode().unique())  # pd.unique(cleanedDF['setences_cleaned'])#set(tag for doc in cleanedDF['setences_cleaned'].values.tolist() for tag in doc)
+tag2id = {tag: id for id, tag in enumerate(unique_tags)}
+id2tag = {id: tag for tag, id in tag2id.items()}
+
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
+import torch
+
+MAX_LEN = 512
+labels = cleanedDF['setences_cleaned'].values.tolist()
+a = []
+for lab in labels:
+    c = torch.tensor([tag2id.get(l) for l in lab], dtype=torch.int)
+    a.append(c)
+tags = pad_sequence(a, batch_first=True)
+tags = tags[:, :512]
+print(tags)
+
+from transformers import DistilBertTokenizerFast, DistilBertModel
+
+tokenizer = DistilBertTokenizerFast.from_pretrained("./model/")#'distilbert-base-uncased'
+model = DistilBertModel.from_pretrained("./model/")#"distilbert-base-uncased"
+label_all_tokens = True
+
+
+def tokenize_and_align_labels(tokenizer, examples, tags):
+    tokenized_inputs = tokenizer(examples, truncation=True, is_split_into_words=False, padding='max_length',
+                                 max_length=512)
+    labels = []
+    for i, label in enumerate(tags):
+        word_ids = tokenized_inputs.word_ids(batch_index=i)
+        previous_word_idx = None
+        label_ids = []
+        for word_idx in word_ids:
+            # Special tokens have a word id that is None. We set the label to -100 so they are automatically
+            # ignored in the loss function.
+            if word_idx is None:
+                label_ids.append(-100)
+            # We set the label for the first token of each word.
+            elif word_idx != previous_word_idx:
+                label_ids.append(label[word_idx])
+            # For the other tokens in a word, we set the label to either the current label or -100, depending on
+            # the label_all_tokens flag.
+            else:
+                label_ids.append(label[word_idx] if label_all_tokens else -100)
+            previous_word_idx = word_idx
+
+        labels.append(label_ids)
+
+    tokenized_inputs["labels"] = labels
+    return tokenized_inputs
+
+test = tokenize_and_align_labels(tokenizer, df_data['content'].values.tolist(), tags)
+
+from torch.utils.data import Dataset, DataLoader
+class TransformerDataset(Dataset):
+    def __init__(self, datax, datay):
+        self.datax = datax
+        self.datay = datay
+    def __getitem__(self, index):
+        return self.datax[index], self.datay[index]
+    def __len__(self):
+        return len(self.datax)
+
+train_dataset = TransformerDataset(
+    torch.tensor(test['input_ids'], dtype=torch.int),
+    torch.tensor(test['labels'])
+)
+
+from transformers import DistilBertForTokenClassification, DistilBertModel
+from transformers.modeling_outputs import TokenClassifierOutput
+model = DistilBertForTokenClassification.from_pretrained('model/', num_labels=len(unique_tags))
+import numpy
+def fit():
+    opt = torch.optim.Adam(model.parameters(), lr=1e-5)
+    loss_func = torch.nn.CrossEntropyLoss()
+    testLoader = DataLoader(dataset=train_dataset, batch_size=16)
+    for i in range(3):
+        model.train()
+        trainloss = []
+        for datax, datay in testLoader:
+            opt.zero_grad()
+            pred = model(datax)
+            loss = loss_func(pred.logits.view(-1, len(unique_tags)), datay.view(-1))
+            trainloss.append(loss.item())
+            loss.backward()
+            opt.step()
+        print(f'epoch {i}/3 loss:{numpy.mean(trainloss)}')
+
+fit()
